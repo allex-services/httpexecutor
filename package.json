@@ -1,0 +1,21 @@
+{
+  "name": "allex_httpexecutorservice",
+  "version": "0.1.0",
+  "description": "HttpExecutorService",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url" : "git@gitlab.hers.rs:allex_services/httpexecutor"
+  },
+  "keywords": [
+    "ecosystem:allex",
+    "Service",
+    "HttpExecutor"
+  ],
+  "author": "HERS Belgrade",
+  "license": "ISC"
+}
+
