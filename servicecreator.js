@@ -15,15 +15,24 @@ function createHttpExecutorService(execlib, ParentService) {
 
   function HttpExecutorService(prophash) {
     ParentService.call(this, prophash);
+    this.strategynames = Object.keys(prophash.strategies);
+    console.log(process.pid, 'strategynames!', this.strategynames);
+    this.guardedMethods = prophash.guardedMethods;
   }
   
   ParentService.inherit(HttpExecutorService, factoryCreator);
   
   HttpExecutorService.prototype.__cleanUp = function() {
+    this.guardedMethods = null;
+    this.strategynames = null;
     ParentService.prototype.__cleanUp.call(this);
   };
   
   HttpExecutorService.prototype.extractRequestParams = function(url, req){
+    if (url.alreadyprocessed) {
+      console.log('already processed', url.alreadyprocessed);
+      return q(url.alreadyprocessed);
+    }
     if (req.method==='GET') {
       return q(url.query);
     }
@@ -31,6 +40,71 @@ function createHttpExecutorService(execlib, ParentService) {
       return this.readRequestBody(req);
     }
     return q.reject(new lib.Error('UNSUPPORTED_REQUEST_METHOD', 'Request method `'+req.method+'` is not supported'));
+  };
+
+  HttpExecutorService.prototype.authenticate = function(credentials){
+    if(!this.strategynames){
+      return q(null);
+    }
+    if(!this.authenticator){
+      console.trace();
+      console.error('How come EntryPointService has no authenticator?!');
+      return q(null);
+    }
+    var resolveobj = {};
+    this.strategynames.forEach(function(stratname){
+      resolveobj[stratname] = credentials;
+    });
+    credentials = null;
+    return this.authenticator.call('resolve',resolveobj);
+  };
+
+  HttpExecutorService.prototype.authenticateGuarded = function (methodname, req, res, reqparams) {
+    var t = this, 
+      authobj = {},
+      invokeobj = {},
+      processedurl = {alreadyprocessed: invokeobj},
+      cleaner = function () {
+        t = null;
+        authobj = null;
+        invokeobj = null;
+        processedurl = null;
+        methodname = null;
+        req = null;
+        res = null;
+        reqparams = null;
+        cleaner = null;
+      },
+      strategyname = this.guardedMethods[methodname],
+      i,
+      authprefix = '__'+strategyname+'__',
+      mymethod = this[methodname];
+    for (i in reqparams) {
+      if (!(i in reqparams)) {
+        continue;
+      }
+      if (i.indexOf(authprefix) === 0) {
+        authobj[i.substr(authprefix.length)] = reqparams[i];
+      } else {
+        invokeobj[i] = reqparams[i];
+      }
+    }
+    console.log('request object', reqparams);
+    console.log('auth obj', authobj);
+    console.log('invoke obj', invokeobj);
+    return this.authenticate(authobj).then(
+      function (result) {
+        console.log('guarded auth succeeded', result);
+        console.log('will call', methodname, 'with', processedurl);
+        mymethod.call(t, processedurl, req, res);
+        cleaner();
+      },
+      function (err) {
+        console.error(err);
+        req.end('{}');
+        cleaner();
+      }
+    );
   };
 
   HttpExecutorService.prototype._onRequest = function(req,res){
@@ -42,12 +116,19 @@ function createHttpExecutorService(execlib, ParentService) {
       isanonymous = this.anonymousMethods.indexOf(mymethodname)>=0,
       targetmethodlength = isanonymous ? 3 : 3;
     //any mymethod has to accept (url,req,res),
-    if('function' !== typeof mymethod){
-      res.end('');
+    if(!lib.isFunction(mymethod)){
+      res.end('{}');
       return;
     }
     if(mymethod.length!==targetmethodlength){
       res.end(mymethodname+' length '+mymethod.length+' is not '+targetmethodlength);
+      return;
+    }
+    if (this.guardedMethods[mymethodname]) {
+      console.log('guarded method!', mymethodname);
+      this.extractRequestParams(url, req).then(
+        this.authenticateGuarded.bind(this, mymethodname, req, res)
+      );
       return;
     }
     if (isanonymous) {
