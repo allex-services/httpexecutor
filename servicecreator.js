@@ -15,7 +15,7 @@ function createHttpExecutorService(execlib, ParentService) {
 
   function HttpExecutorService(prophash) {
     ParentService.call(this, prophash);
-    this.strategynames = Object.keys(prophash.strategies);
+    this.strategynames = prophash.strategies ? Object.keys(prophash.strategies) : [];
     console.log(process.pid, 'strategynames!', this.strategynames);
     this.guardedMethods = prophash.guardedMethods;
   }
