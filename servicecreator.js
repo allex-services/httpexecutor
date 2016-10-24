@@ -33,13 +33,15 @@ function createHttpExecutorService(execlib, ParentService) {
       console.log('already processed', url.alreadyprocessed);
       return q(url.alreadyprocessed);
     }
-    if (req.method==='GET') {
-      return q(url.query);
+    switch (req.method) {
+      case 'GET':
+        return q(url.query);
+      case 'PUT':
+      case 'POST':
+        return this.readRequestBody(req);
+      default:
+        return q.reject(new lib.Error('UNSUPPORTED_REQUEST_METHOD', 'Request method `'+req.method+'` is not supported'));
     }
-    if (req.method==='PUT') {
-      return this.readRequestBody(req);
-    }
-    return q.reject(new lib.Error('UNSUPPORTED_REQUEST_METHOD', 'Request method `'+req.method+'` is not supported'));
   };
 
   HttpExecutorService.prototype.authenticate = function(credentials){
@@ -164,10 +166,7 @@ function createHttpExecutorService(execlib, ParentService) {
       body = null;
     }
     function dataer (chunk) {
-      if (!body) {
-        return;
-      }
-      body += chunk;
+      body += chunk.toString('utf8');
     }
     function detacher () {
       req.removeListener('end', ender);
