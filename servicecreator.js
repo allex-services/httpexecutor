@@ -134,13 +134,15 @@ function createHttpExecutorService(execlib, ParentService) {
       return;
     }
     if (isanonymous) {
+      console.log(mymethodname, 'isanonymous', isanonymous, 'allowAnonymous', this.allowAnonymous);
       if (this.allowAnonymous) {
         mymethod.call(this, url, req, res);
       } else {
         res.end('');
       }
     } else {
-      mymethod.call(this, url, req, res);
+      //mymethod.call(this, url, req, res);
+      res.end('');
     }
     } catch(e) {
       console.error(e.stack);
