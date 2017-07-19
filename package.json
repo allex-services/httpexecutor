@@ -1,6 +1,6 @@
 {
   "name": "allex_httpexecutorservice",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "HttpExecutorService",
   "main": "index.js",
   "scripts": {
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url" : "git@gitlab.hers.rs:allex_services/httpexecutor"
+    "url": "git@github.com:allex-services/httpexecutor.git"
   },
   "keywords": [
     "ecosystem:allex",
@@ -18,4 +18,3 @@
   "author": "HERS Belgrade",
   "license": "ISC"
 }
-
