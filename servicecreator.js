@@ -4,7 +4,8 @@ function createHttpExecutorService(execlib, ParentService) {
   'use strict';
   var lib = execlib.lib,
     q = lib.q,
-    qlib = lib.qlib;
+    qlib = lib.qlib,
+    execSuite = execlib.execSuite;
 
   function factoryCreator(parentFactory) {
     return {
@@ -16,21 +17,42 @@ function createHttpExecutorService(execlib, ParentService) {
   function HttpExecutorService(prophash) {
     ParentService.call(this, prophash);
     this.strategynames = prophash.strategies ? Object.keys(prophash.strategies) : [];
-    console.log(process.pid, 'strategynames!', this.strategynames);
     this.guardedMethods = prophash.guardedMethods || {};
+    this.allowAnonymous = prophash.allowAnonymous;
+    this.authenticator = null;
+    execSuite.acquireAuthSink(prophash.strategies).done(
+      this.onAuthenticator.bind(this),
+      this.close.bind(this)
+    );
   }
   
   ParentService.inherit(HttpExecutorService, factoryCreator);
   
   HttpExecutorService.prototype.__cleanUp = function() {
+    if(this.authenticator){
+      this.authenticator.destroy();
+    }
+    this.authenticator = null;
+    this.allowAnonymous = null;
     this.guardedMethods = null;
     this.strategynames = null;
     ParentService.prototype.__cleanUp.call(this);
   };
   
+  HttpExecutorService.prototype.onAuthenticator = function (authsink) {
+    if(!this.destroyed){
+      authsink.destroy();
+      return;
+    }
+    this.authenticator = authsink;
+    if (!this.authenticator) {
+      console.error('no authsink');
+      process.exit(0);
+    }
+  };
+
   HttpExecutorService.prototype.extractRequestParams = function(url, req){
     if (url.alreadyprocessed) {
-      console.log('already processed', url.alreadyprocessed);
       return q(url.alreadyprocessed);
     }
     switch (req.method) {
@@ -91,18 +113,17 @@ function createHttpExecutorService(execlib, ParentService) {
         invokeobj[i] = reqparams[i];
       }
     }
-    console.log('request object', reqparams);
-    console.log('auth obj', authobj);
-    console.log('invoke obj', invokeobj);
     return this.authenticate(authobj).then(
       function (result) {
-        console.log('guarded auth succeeded', result);
-        console.log('will call', methodname, 'with', processedurl);
-        mymethod.call(t, processedurl, req, res);
+        if (!result) {
+          res.end('{}');
+        } else {
+          processedurl.auth = result;
+          mymethod.call(t, processedurl, req, res);
+        }
         cleaner();
       },
       function (err) {
-        console.error(err);
         req.end('{}');
         cleaner();
       }
@@ -127,14 +148,12 @@ function createHttpExecutorService(execlib, ParentService) {
       return;
     }
     if (this.guardedMethods[mymethodname]) {
-      console.log('guarded method!', mymethodname);
       this.extractRequestParams(url, req).then(
         this.authenticateGuarded.bind(this, mymethodname, req, res)
       );
       return;
     }
     if (isanonymous) {
-      console.log(mymethodname, 'isanonymous', isanonymous, 'allowAnonymous', this.allowAnonymous);
       if (this.allowAnonymous) {
         mymethod.call(this, url, req, res);
       } else {
@@ -145,7 +164,6 @@ function createHttpExecutorService(execlib, ParentService) {
       res.end('');
     }
     } catch(e) {
-      console.error(e.stack);
       console.error(e);
       res.writeHead(500, 'Internal error');
       res.end('Internal error');
@@ -156,7 +174,10 @@ function createHttpExecutorService(execlib, ParentService) {
     var body = '';
     function ender () {
       detacher();
-      console.log('request body', body);
+      //console.log('request body', body);
+      try {
+        body = JSON.parse(body);
+      } catch(ignore) {}
       defer.resolve(body);
       body = null;
       defer = null;
