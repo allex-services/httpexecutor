@@ -138,6 +138,10 @@ function createHttpExecutorService(execlib, ParentService) {
       mymethod = this[mymethodname],
       isanonymous = this.anonymousMethods.indexOf(mymethodname)>=0,
       targetmethodlength = isanonymous ? 3 : 3;
+    if (!mymethodname) {
+      res.end(this.emptyMethodResponse || '{}');
+      return;
+    }
     //any mymethod has to accept (url,req,res),
     if(!lib.isFunction(mymethod)){
       res.end('{}');
