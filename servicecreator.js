@@ -7,6 +7,10 @@ function createHttpExecutorService(execlib, ParentService) {
     qlib = lib.qlib,
     execSuite = execlib.execSuite;
 
+  function endres (res) {
+    res.end('{}');
+  }
+
   function factoryCreator(parentFactory) {
     return {
       'service': require('./users/serviceusercreator')(execlib, parentFactory.get('service')),
@@ -75,98 +79,106 @@ function createHttpExecutorService(execlib, ParentService) {
       console.error('How come EntryPointService has no authenticator?!');
       return q(null);
     }
-    var resolveobj = {};
-    this.strategynames.forEach(function(stratname){
-      resolveobj[stratname] = credentials;
-    });
-    credentials = null;
-    return this.authenticator.call('resolve',resolveobj);
+    //console.log('call', this.authenticator.modulename, this.authenticator.role, 'to resolve', credentials);
+    return this.authenticator.call('resolve',credentials||{});
   };
 
   HttpExecutorService.prototype.authenticateGuarded = function (methodname, req, res, reqparams) {
-    var t = this, 
-      authobj = {},
-      invokeobj = {},
-      processedurl = {alreadyprocessed: invokeobj},
-      cleaner = function () {
-        t = null;
-        authobj = null;
-        invokeobj = null;
-        processedurl = null;
-        methodname = null;
-        req = null;
-        res = null;
-        reqparams = null;
-        cleaner = null;
-      },
+    var authobj = {},
+      alreadyprocobj = {},
+      processedurl = {alreadyprocessed: alreadyprocobj},
       strategyname = this.guardedMethods[methodname],
       i,
       authprefix = '__'+strategyname+'__',
-      mymethod = this[methodname];
+      mymethod = this[methodname],
+      ret;
+    if (!strategyname) {
+      endres(res);
+      return;
+    }
+    if (!lib.isFunction(mymethod)) {
+      endres(res);
+      return;
+    }
+    authobj[strategyname] = {};
     for (i in reqparams) {
       if (!(i in reqparams)) {
         continue;
       }
       if (i.indexOf(authprefix) === 0) {
-        authobj[i.substr(authprefix.length)] = reqparams[i];
+        authobj[strategyname][i.substr(authprefix.length)] = reqparams[i];
       } else {
-        invokeobj[i] = reqparams[i];
+        alreadyprocobj[i] = reqparams[i];
       }
     }
-    return this.authenticate(authobj).then(
-      function (result) {
-        if (!result) {
-          res.end('{}');
-        } else {
-          processedurl.auth = result;
-          mymethod.call(t, processedurl, req, res);
-        }
-        cleaner();
-      },
-      function (err) {
-        req.end('{}');
-        cleaner();
-      }
+    var ret = this.authenticate(authobj).then(
+      onAuthGuardedAuthSucceeded.bind(null, this, mymethod, processedurl, req, res),
+      onAuthGuardedAuthFailed.bind(null, res)
     );
+    mymethod = null;
+    processedurl = null;
+    req = null;
+    res = null;
+    return ret;
   };
+
+  function onAuthGuardedAuthSucceeded (httpex, mymethod, processedurl, req, res, result) {
+    if (httpex && httpex.destroyed && result) {
+      processedurl.auth = result;
+      mymethod.call(httpex, processedurl, req, res);
+    } else {
+      endres(res);
+    }
+    httpex = null;
+    mymethod = null;
+    processedurl = null;
+    req = null;
+    res = null;
+  }
+
+  function onAuthGuardedAuthFailed (res, reason_ignored) {
+    //console.log('authenticate error', err);
+    res.end('{}');
+    res = null;
+  }
 
   HttpExecutorService.prototype._onRequest = function(req,res){
     try {
-    var url = Url.parse(req.url,true),
-      query = url.query,
-      mymethodname = url.pathname.substring(1),
-      mymethod = this[mymethodname],
-      isanonymous = this.anonymousMethods.indexOf(mymethodname)>=0,
-      targetmethodlength = isanonymous ? 3 : 3;
-    if (!mymethodname) {
-      res.end(this.emptyMethodResponse || '{}');
-      return;
-    }
-    //any mymethod has to accept (url,req,res),
-    if(!lib.isFunction(mymethod)){
-      res.end('{}');
-      return;
-    }
-    if(mymethod.length!==targetmethodlength){
-      res.end(mymethodname+' length '+mymethod.length+' is not '+targetmethodlength);
-      return;
-    }
-    if (this.guardedMethods[mymethodname]) {
-      this.extractRequestParams(url, req).then(
-        this.authenticateGuarded.bind(this, mymethodname, req, res)
-      );
-      return;
-    }
-    if (isanonymous) {
-      if (this.allowAnonymous) {
-        mymethod.call(this, url, req, res);
+      var url = Url.parse(req.url,true),
+        query = url.query,
+        mymethodname = url.pathname.substring(1),
+        mymethod = this[mymethodname],
+        isanonymous = this.anonymousMethods.indexOf(mymethodname)>=0,
+        targetmethodlength = isanonymous ? 3 : 3;
+      if (!mymethodname) {
+        res.end(this.emptyMethodResponse || '{}');
+        return;
+      }
+      //any mymethod has to accept (url,req,res),
+      if(!lib.isFunction(mymethod)){
+        endres(res);
+        return;
+      }
+      if(mymethod.length!==targetmethodlength){
+        console.log(mymethodname+' length '+mymethod.length+' is not '+targetmethodlength);
+        endres(res);
+        return;
+      }
+      if (this.guardedMethods[mymethodname]) {
+        this.extractRequestParams(url, req).then(
+          this.authenticateGuarded.bind(this, mymethodname, req, res)
+        );
+        return;
+      }
+      if (isanonymous) {
+        if (this.allowAnonymous) {
+          mymethod.call(this, url, req, res);
+        } else {
+          res.end('');
+        }
       } else {
         res.end('');
       }
-    } else {
-      //mymethod.call(this, url, req, res);
-      res.end('');
-    }
     } catch(e) {
       console.error(e);
       res.writeHead(500, 'Internal error');
