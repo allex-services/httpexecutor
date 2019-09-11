@@ -100,26 +100,34 @@ function createHttpExecutorService(execlib, ParentService) {
       endres(res);
       return;
     }
-    authobj[strategyname] = {};
-    for (i in reqparams) {
-      if (!(i in reqparams)) {
-        continue;
+    try {
+      authobj[strategyname] = {};
+      if (lib.isVal(reqparams) && 'object' === typeof reqparams) {
+        for (i in reqparams) {
+          if (!(i in reqparams)) {
+            continue;
+          }
+          if (i.indexOf(authprefix) === 0) {
+            authobj[strategyname][i.substr(authprefix.length)] = reqparams[i];
+          } else {
+            alreadyprocobj[i] = reqparams[i];
+          }
+        }
       }
-      if (i.indexOf(authprefix) === 0) {
-        authobj[strategyname][i.substr(authprefix.length)] = reqparams[i];
-      } else {
-        alreadyprocobj[i] = reqparams[i];
-      }
+      var ret = this.authenticate(authobj).then(
+        onAuthGuardedAuthSucceeded.bind(null, this, mymethod, processedurl, req, res),
+        onAuthGuardedAuthFailed.bind(null, res)
+      );
+      mymethod = null;
+      processedurl = null;
+      req = null;
+      res = null;
+      return ret;
     }
-    var ret = this.authenticate(authobj).then(
-      onAuthGuardedAuthSucceeded.bind(null, this, mymethod, processedurl, req, res),
-      onAuthGuardedAuthFailed.bind(null, res)
-    );
-    mymethod = null;
-    processedurl = null;
-    req = null;
-    res = null;
-    return ret;
+    catch (e) {
+      console.log(e);
+      res.end('{}');
+    }
   };
 
   function onAuthGuardedAuthSucceeded (httpex, mymethod, processedurl, req, res, result) {
