@@ -2,7 +2,7 @@ function createServicePack(execlib) {
   'use strict';
   return {
     service: {
-      dependencies: ['allex_httpservice']
+      dependencies: ['allex_httpservice', 'allex:httprequestparameterextraction:lib']
     },
     sinkmap: {
       dependencies: ['allex_httpservice']

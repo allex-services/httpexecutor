@@ -1,15 +1,11 @@
 var Url = require('url');
 
-function createHttpExecutorService(execlib, ParentService) {
+function createHttpExecutorService(execlib, ParentService, httpreqparamextlib) {
   'use strict';
   var lib = execlib.lib,
     q = lib.q,
     qlib = lib.qlib,
     execSuite = execlib.execSuite;
-
-  function endres (res) {
-    res.end('{}');
-  }
 
   function factoryCreator(parentFactory) {
     return {
@@ -93,11 +89,11 @@ function createHttpExecutorService(execlib, ParentService) {
       mymethod = this[methodname],
       ret;
     if (!strategyname) {
-      endres(res);
+      this.endResponseWithEmpty(res);
       return;
     }
     if (!lib.isFunction(mymethod)) {
-      endres(res);
+      this.endResponseWithEmpty(res);
       return;
     }
     try {
@@ -135,7 +131,7 @@ function createHttpExecutorService(execlib, ParentService) {
       processedurl.auth = result;
       mymethod.call(httpex, processedurl, req, res);
     } else {
-      endres(res);
+      httpex.endResponseWithEmpty(res);
     }
     httpex = null;
     mymethod = null;
@@ -153,23 +149,22 @@ function createHttpExecutorService(execlib, ParentService) {
   HttpExecutorService.prototype._onRequest = function(req,res){
     try {
       var url = Url.parse(req.url,true),
-        query = url.query,
         mymethodname = url.pathname.substring(1),
         mymethod = this[mymethodname],
         isanonymous = this.anonymousMethods.indexOf(mymethodname)>=0,
         targetmethodlength = isanonymous ? 3 : 3;
       if (!mymethodname) {
-        res.end(this.emptyMethodResponse || '{}');
+        res.end(this.emptyMethodResponse);
         return;
       }
       //any mymethod has to accept (url,req,res),
       if(!lib.isFunction(mymethod)){
-        endres(res);
+        this.endResponseWithEmpty(res);
         return;
       }
       if(mymethod.length!==targetmethodlength){
         console.log(mymethodname+' length '+mymethod.length+' is not '+targetmethodlength);
-        endres(res);
+        this.endResponseWithEmpty(res);
         return;
       }
       if (this.guardedMethods[mymethodname]) {
@@ -182,10 +177,10 @@ function createHttpExecutorService(execlib, ParentService) {
         if (this.allowAnonymous) {
           mymethod.call(this, url, req, res);
         } else {
-          res.end('');
+          this.endResponseWithEmpty(res);
         }
       } else {
-        res.end('');
+        this.endResponseWithEmpty(res);
       }
     } catch(e) {
       console.error(e);
@@ -193,38 +188,8 @@ function createHttpExecutorService(execlib, ParentService) {
       res.end('Internal error');
     }
   };
-  HttpExecutorService.prototype.readRequestBody = function (req) {
-    var defer = q.defer();
-    var body = '';
-    function ender () {
-      detacher();
-      //console.log('request body', body);
-      try {
-        body = JSON.parse(body);
-      } catch(ignore) {}
-      defer.resolve(body);
-      body = null;
-      defer = null;
-    }
-    function errorer (err) {
-      detacher();
-      defer.reject(err);
-      defer = null;
-      body = null;
-    }
-    function dataer (chunk) {
-      body += chunk.toString('utf8');
-    }
-    function detacher () {
-      req.removeListener('end', ender);
-      req.removeListener('error', errorer);
-      req.removeListener('data', dataer);
-    }
-    req.on('end', ender);
-    req.on('error', errorer);
-    req.on('data', dataer);
-    return defer.promise;
-  };
+  HttpExecutorService.prototype.readRequestBody = httpreqparamextlib.readRequestBody;
+
 
   HttpExecutorService.prototype.resEnder = function (res, string) {
     return function () {
@@ -232,11 +197,16 @@ function createHttpExecutorService(execlib, ParentService) {
       res = null;
       string = null;
     }
-  }
+  };
 
   HttpExecutorService.prototype.resJSONEnder = function (res, obj) {
     return this.resEnder(res, JSON.stringify(obj));
-  }
+  };
+
+  HttpExecutorService.prototype.emptyMethodResponse = '{}';
+  HttpExecutorService.prototype.endResponseWithEmpty = function (res) {
+    res.end(this.emptyMethodResponse);
+  };
 
   HttpExecutorService.prototype.anonymousMethods = [];
 
