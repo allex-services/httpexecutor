@@ -129,7 +129,12 @@ function createHttpExecutorService(execlib, ParentService, httpreqparamextlib) {
   function onAuthGuardedAuthSucceeded (httpex, mymethod, processedurl, req, res, result) {
     if (httpex && httpex.destroyed && result) {
       processedurl.auth = result;
-      mymethod.call(httpex, processedurl, req, res);
+      try {
+        mymethod.call(httpex, processedurl, req, res);
+      } catch (e) {
+        console.log(httpex.constructor.name, 'Error in calling guarded method', e);
+        httpex.endResponseWithEmpty(res);
+      }
     } else {
       httpex.endResponseWithEmpty(res);
     }
